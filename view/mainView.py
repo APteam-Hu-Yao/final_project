@@ -1,68 +1,75 @@
 from PyQt5.QtWidgets import (QMainWindow,
-                             QPushButton,
-                             QLabel,
                              QWidget,
                              QVBoxLayout,
                              QHBoxLayout,
-                             QLineEdit,
-                             QMenuBar,
-                             QAction,
-                             QGraphicsOpacityEffect,
-                             QListWidget,
+                             QGridLayout,
                              QSizePolicy,
                              )
 from PyQt5.QtGui import QIcon, QPalette, QColor
 from PyQt5.QtCore import Qt
 from view.plotting_widget import PlotPanel, PlotButton
-from view.channels_widget import channel_list
-from view.custom_widget import custom_label
+from view.channels_widget import ChannelCombo
+from view.custom_widget import CustomPanel
+from view.status_printer import StatusLabel
+from viewmodel.RealTimeViewModel import SignalViewModel
 
 #creat the window class that we need
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # self.vm = viewmodel
         self.setWindowTitle("live EMG plotting")
         self.resize(1200, 900)
         self.setWindowIcon(QIcon("others/icon.png"))
         self.setStyleSheet("background-color: #f0f3f9;")
         # self.menu = QMenuBar()
 
-
         # decide the order of the widgets
         self.V_layout = QVBoxLayout()
         self.H_layout = QHBoxLayout()
+        self.G_layout = QGridLayout()
 
-        # create widgets that accept the order
-        self.basic_container = QWidget()
-        self.container1 = QWidget()
+        #create widgets that accept the order
+        self.whole_block = QWidget()
 
         #1.create an instance of 32 channels choose mechanism panel
-        self.channel_container = channel_list()
+        self.channel_container = ChannelCombo()
+
+        #2.create a panel that prints the status of connection
+        self.status_container = StatusLabel()
 
 
-        #2.create an instance of plotting panel by vispy and an instance of the buttons
-        #plan the order of plotting panel and buttons
-        self.plot_container = QWidget()
+        #3.create the plotting area
+        self.plot_panel = PlotPanel(max_points=1000) #create plot_panel
+        self.plot_button = PlotButton()  #create the control buttons
+
+        self.plot_container = QWidget()  #plan the order of plotting panel and buttons
         self.plot_container.layout = QVBoxLayout()
-        self.plot_container.layout.addWidget(PlotPanel(max_points=500),stretch=5)
-        self.plot_container.layout.addWidget(PlotButton(),stretch=0)
+        self.plot_container.layout.addWidget(self.plot_panel,stretch=5)
+        self.plot_container.layout.addWidget(self.plot_button,stretch=0)
         self.plot_container.setLayout(self.plot_container.layout)
-        self.plot_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.plot_container.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding
+        )
 
 
-        #3.customize area for userinterface
-        self.custom_container = custom_label()
+        #4.customize area for userinterface
+        self.custom_container = CustomPanel()
 
-        #add those containers to the layout
-        self.V_layout.addWidget(self.container1)
-        self.V_layout.addWidget(self.custom_container)
-        self.H_layout.addWidget(self.channel_container)
-        self.H_layout.addWidget(self.plot_container)
-        #参数 (index, stretch)：index 是控件在 layout 中的顺序
-        self.H_layout.setStretch(0, 0)  # channel_list 不再拉伸
-        self.H_layout.setStretch(1, 1)  # plot_widget 占据剩余所有空间
 
-        #apply layout to the widget and make the widget central
-        self.basic_container.setLayout(self.V_layout)
-        self.setCentralWidget(self.basic_container)
-        self.container1.setLayout(self.H_layout)
+        self.G_layout.addWidget(self.channel_container, 0,0)
+        self.G_layout.addWidget(self.status_container, 1,0)
+        self.G_layout.addWidget(self.plot_container, 0,1)
+        self.G_layout.addWidget(self.custom_container, 1,1)
+        self.G_layout.setContentsMargins(0, 0, 0, 0)  # 左、上、右、下的外边距都设 0
+        self.G_layout.setSpacing(0)  # 控件之间的间距也设为 0
+        self.G_layout.setColumnStretch(0,0)
+        self.G_layout.setColumnStretch(1, 1)
+        # self.G_layout.setRowStretch(0, 1)
+
+
+        self.whole_block.setLayout(self.G_layout)
+        self.setCentralWidget(self.whole_block)
+
+

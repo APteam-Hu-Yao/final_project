@@ -4,6 +4,7 @@ from vispy.scene import visuals
 from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QWidget, QVBoxLayout,QPushButton,QHBoxLayout, QSizePolicy
 
+
 class PlotPanel(QWidget):
      def __init__(self, max_points=500, parent=None):
          super().__init__(parent)
@@ -62,18 +63,44 @@ class PlotButton(QWidget):
     def __init__(self):
         super(). __init__()
         self.button_start = QPushButton("START")
-        self.button_stop = QPushButton("STOP")
-        self.button_resume = QPushButton("RESUME")
-        self.button_start.setStyleSheet("background-color: white; color: black")
-        self.button_stop.setStyleSheet("background-color: white; color: black")
-        self.button_resume.setStyleSheet("background-color: white; color: black")
+        self.button_stop_resume = QPushButton("STOP")
+
+
+        #点击stop，光标按住的时候，stop变disable（灰色），松开时变成able的resume按钮
+
+        self.button_start.setStyleSheet("background-color: white; color: black; ")
+        self.button_stop_resume.setStyleSheet("background-color: white; color: black")
+
+
+
+
         self.layout = QHBoxLayout()
         self.layout.addWidget(self.button_start)
-        self.layout.addWidget(self.button_stop)
-        self.layout.addWidget(self.button_resume)
+        self.layout.addWidget(self.button_stop_resume)
+
         self.setLayout(self.layout)
         # 放大按钮本身
-        for btn in (self.button_start, self.button_stop, self.button_resume):
-            btn.setMinimumHeight(30)
+        for btn in (self.button_start, self.button_stop_resume):
+            btn.setMinimumHeight(0)
             btn.setMinimumWidth(60)
             btn.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+
+        self.button_stop_resume.pressed.connect(self._on_pressed)
+        self.button_stop_resume.released.connect(self._on_released)
+
+    def _on_pressed(self):
+        # 当鼠标按住时，把按钮禁用（变灰）
+        self.button_stop_resume.setEnabled(False)
+
+    def _on_released(self):
+        # 当鼠标松开后，先切换文字
+        if self.button_stop_resume.text() == "STOP":
+            self.button_stop_resume.setText("RESUME")
+        else:
+            self.button_stop_resume.setText("STOP")
+
+        # 恢复可用
+        self.button_stop_resume.setEnabled(True)
+
+
+
