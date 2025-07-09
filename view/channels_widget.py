@@ -1,61 +1,66 @@
-from PyQt5.QtWidgets import QComboBox, QSizePolicy
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtCore import Qt
-class ChannelCombo(QComboBox):
+from PyQt5.QtWidgets import QListWidget, QListWidgetItem
+from PyQt5.QtCore import Qt, pyqtSignal
+import time
+
+class ChannelList(QListWidget):
+    """
+    a 32 channels list, 带信号 & 时间戳打印 & 外部接口
+    """
+    # 和原 combo 保持一致的信号名
     channel_changed = pyqtSignal(int)
+
     def __init__(self, parent=None):
-        super(). __init__(parent)
-        self.addItems([f"Ch {i}" for i in range(32)])
-        self.setFocusPolicy(Qt.NoFocus)
-        # —— 1. 大小策略：宽度优先按内容，垂直不拉伸 ——
-        self.setSizePolicy(
-            QSizePolicy.Fixed,  # 水平用内容决定
-            QSizePolicy.Fixed  # 垂直固定（或 Preferred 也行）
-        )
+        super().__init__(parent)
+        self._channel_count = 32
+        self.setSelectionMode(QListWidget.SingleSelection)
+        self._populate()
 
-        # —— 2. 最小/最大宽度限制 ——
-        self.setMinimumWidth(60)  # 最少占 120px
-        self.setMaximumWidth(1200)  # 最多扩展到 200px
+        # 选中行变化时调用
+        self.currentItemChanged.connect(self._on_current_item_changed)
+
+        # 样式不变
         self.setStyleSheet("""
-            /* 整个控件背景 */
-            QComboBox {
-                background-color: #BCCCDC;
-                color: #333333;
-                border: none;
-                padding: 5px;
-                border-radius: 4px;
-            }
-            /* 箭头区域 */
-            QComboBox::drop-down {
-                border: none;
-                subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 20px;
-            }
-            /* 下拉列表（QAbstractItemView 是内部列表） */
-            QComboBox QAbstractItemView {
-                background-color: #BCCCDC;
-                color: #333333;
-                border: none;
-                padding: 0;
-            }
-            /* 列表项常规样式 */
-            QComboBox QAbstractItemView::item {
-                padding: 8px 12px;
-                border-radius: 4px;
-                margin: 2px 0;
-            }
-            /* 选中时样式 */
-            QComboBox QAbstractItemView::item:selected {
-                background-color: #44475A;
-                color: #f8f8f2;
-                outline: none;
-            }
+        QListWidget{
+            font-family: 'Segoe UI';
+            font-size: 35px;
+            color:#333333;
+            background-color: #BCCCDC;
+        }
+        QListWidget::item{
+            min-height: 60px;
+            max-height: 60px;
+            padding-left: 10px;
+        }
+        QListWidget::item::selected{
+            background-color: #4A628A;
+            color: #FFFFFF
+        }
         """)
-        # 监听内置的 currentIndexChanged，将其转发为我们的自定义信号
-        self.currentIndexChanged.connect(self._on_channel_changed)
 
-    def _on_channel_changed(self, index: int):
-        # 这里简单打印，后面再接到 ViewModel
-        channel_name = self.itemText(index)
-        print(f"Selected channel index: {index}, name: {channel_name}")
+    def _populate(self):
+        self.clear()
+        for ch in range(self._channel_count):
+            item = QListWidgetItem(f"Channel {ch}")
+            item.setData(Qt.UserRole, ch)
+            self.addItem(item)
+
+    def _on_current_item_changed(self, current, previous):
+        if current is None:
+            return
+        ch = current.data(Qt.UserRole)
+        # 发信号
+        self.channel_changed.emit(ch)
+        # 打印日志
+        print(f"[ChannelList] {time.strftime('%H:%M:%S')} Channel selected: Ch {ch}")
+
+    def get_current_channel(self):
+        """返回当前选中的通道号，若无选中返回 None"""
+        cur = self.currentItem()
+        return cur.data(Qt.UserRole) if cur else None
+
+    def select_channel(self, ch: int):
+        """程序内选中通道，并触发 on_current_item_changed"""
+        if not (0 <= ch < self._channel_count):
+            return
+        # 用 setCurrentRow 自动更新 currentItem 并发信号
+        self.setCurrentRow(ch)

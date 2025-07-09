@@ -1,50 +1,61 @@
-import numpy as np
-from collections import deque
 from PyQt5.QtCore import QObject, pyqtSignal
+import numpy as np
+import time
 
 class DataProcessor(QObject):
-    data_updated = pyqtSignal(np.ndarray)  
-    full_data_updated = pyqtSignal(np.ndarray) 
-    status_updated = pyqtSignal(bool, str)  
+    data_updated = pyqtSignal(np.ndarray)
+    status_updated = pyqtSignal(bool, str)
 
-    def __init__(self, tcp_service, buffer_size=100):
-        super().__init__()
+    def __init__(self, tcp_service, parent=None):
+        super().__init__(parent)
         self.tcp_service = tcp_service
-        self.buffer = deque(maxlen=buffer_size)
+        self.current_channel = 0
+        self.paused = False
+        self.buffer = []
         self.full_data = []
         self.sample_count = 0
-        self.paused = False
+        self.max_samples = 1000
+        self.packet_count = 0
+
+        self.tcp_service.data_received.connect(self.process_chunk)
+        self.tcp_service.connection_status.connect(self.handle_connection_status)
 
     def process_chunk(self, data: np.ndarray):
-        if data.shape != (32, 18):
-            raise ValueError(f"Invalid data shape: {data.shape}")
+        if data.shape != (18,):
+            print(f"[DataProcessor] {time.strftime('%H:%M:%S')} Invalid data shape: {data.shape}, Channel: Ch {self.current_channel}")
+            return
         if not self.paused:
+            min_val, max_val = np.min(data), np.max(data)
+            if self.packet_count % 50 == 0:
+             print(f"[DataProcessor] {time.strftime('%H:%M:%S')} Received data for Ch {self.current_channel}, Shape: {data.shape}, Amplitude: [{min_val:.2f}, {max_val:.2f}]")
             self.buffer.append(data.copy())
             self.full_data.append(data.copy())
             self.sample_count += 18
+            self.packet_count += 1
+            if self.packet_count % 100 == 0:
+                print(f"[DataProcessor] {time.strftime('%H:%M:%S')} Processed packet {self.packet_count}, Channel: Ch {self.current_channel}, Total samples: {self.sample_count}")
             self.data_updated.emit(data)
+            if len(self.full_data) > self.max_samples:
+                self.full_data = self.full_data[-self.max_samples:]
 
     def get_realtime_data(self, channel: int):
-        if not self.buffer or not (0 <= channel < 32):
+        if channel != self.current_channel:
             return np.array([])
-        return np.concatenate([chunk[channel, :] for chunk in self.buffer])
+        data = np.concatenate(self.buffer) if self.buffer else np.array([])
+        self.buffer.clear()
+        return data
 
-    def get_full_data(self, channel: int):
-        if not self.full_data or not (0 <= channel < 32):
-            return np.array([])
-        full_data = np.concatenate([chunk[channel, :] for chunk in self.full_data])
-        self.full_data_updated.emit(full_data)
-        return full_data
-
-    def get_rms(self, channel: int):
-        data = self.get_full_data(channel)
-        return np.sqrt(np.mean(data**2)) if data.size > 0 else 0.0
+    def clear_full_data(self):
+        self.buffer.clear()
+        self.full_data.clear()
+        self.sample_count = 0
+        self.packet_count = 0
+        print(f"[DataProcessor] {time.strftime('%H:%M:%S')} Cleared buffers, Channel: Ch {self.current_channel}")
 
     def toggle_pause(self):
         self.paused = not self.paused
-        self.tcp_service.toggle_pause()
         self.status_updated.emit(not self.paused, "Paused" if self.paused else "Resumed")
+        print(f"[DataProcessor] {time.strftime('%H:%M:%S')} State changed: {'Paused' if self.paused else 'Running'}, Channel: Ch {self.current_channel}")
 
-    def clear_full_data(self):
-        self.full_data = []
-        self.sample_count = 0
+    def handle_connection_status(self, status: bool, message: str):
+        self.status_updated.emit(status, message)
