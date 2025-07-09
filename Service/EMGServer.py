@@ -6,22 +6,22 @@ import numpy as np
 from PyQt5.QtCore import QObject, pyqtSignal
 
 class EMGTCPServer(QObject):
-    data_received = pyqtSignal(np.ndarray)  # 32x18 
-    connection_status = pyqtSignal(bool, str) 
+    data_received = pyqtSignal(np.ndarray)
+    connection_status = pyqtSignal(bool, str)
 
-    def __init__(self, host='localhost', port=12345, pkl_file=r'D:\code\applying programming\Applied-Programming-2025\exercises\02\recording.pkl'):
-        
+    def __init__(self, host='localhost', port=10086, pkl_file='d:/code/applying programming/Applied-Programming-2025/exercises/02/recording.pkl'):
         super().__init__()
         self.host = host
         self.port = port
         self.pkl_file = pkl_file
         self.server_socket = None
         self.clients = []
-        self.client_lock = threading.Lock()  # 保护 clients 列表的线程锁
+        self.client_lock = threading.Lock()
         self.running = False
         self.paused = False
         self.data = None
         self.sampling_rate = None
+        self.current_channel = 0
         self.CHANNELS = 32
         self.SAMPLES_PER_PACKET = 18
         self.load_data()
@@ -34,19 +34,15 @@ class EMGTCPServer(QObject):
             self.sampling_rate = self.data['device_information']['sampling_frequency']
             if not isinstance(self.sampling_rate, (int, float)) or self.sampling_rate <= 0:
                 raise ValueError("Invalid sampling rate")
+            for ch in range(min(5, self.CHANNELS)):
+                min_val, max_val = np.min(self.emg_signal[ch, :, :]), np.max(self.emg_signal[ch, :, :])
+                print(f"[Server] {time.strftime('%H:%M:%S')} Channel {ch} data: Amplitude [{min_val:.2f}, {max_val:.2f}]")
             self.connection_status.emit(True, f"Data loaded successfully. Shape: {self.emg_signal.shape}, Sampling rate: {self.sampling_rate} Hz")
+            print(f"[Server] {time.strftime('%H:%M:%S')} Data loaded: Shape={self.emg_signal.shape}, Sampling rate={self.sampling_rate} Hz")
         except Exception as e:
             self.connection_status.emit(False, f"Error loading data: {e}")
+            print(f"[Server] {time.strftime('%H:%M:%S')} Error loading data: {e}")
             raise
-
-    def print_data(self, data, window_index):
-
-        print(f"\nSending window {window_index}:")
-        print(f"Shape: {data.shape}")
-        print("Data values:")
-        for i in range(min(5, data.shape[0])): 
-            print(f"Channel {i+1}: {data[i, :]}")
-        print("-" * 50)
 
     def start(self):
         try:
@@ -56,22 +52,24 @@ class EMGTCPServer(QObject):
             self.server_socket.listen(5)
             self.running = True
             self.connection_status.emit(True, f"Server started on {self.host}:{self.port}")
-            
+            print(f"[Server] {time.strftime('%H:%M:%S')} Started on {self.host}:{self.port}, Sampling rate: {self.sampling_rate} Hz")
             accept_thread = threading.Thread(target=self.accept_connections)
             accept_thread.daemon = True
             accept_thread.start()
         except Exception as e:
             self.connection_status.emit(False, f"Server start failed: {e}")
+            print(f"[Server] {time.strftime('%H:%M:%S')} Start failed: {e}")
             raise
 
     def accept_connections(self):
         while self.running:
             try:
-                self.server_socket.settimeout(1.0) 
+                self.server_socket.settimeout(1.0)
                 client_socket, address = self.server_socket.accept()
                 with self.client_lock:
                     self.clients.append(client_socket)
                 self.connection_status.emit(True, f"New connection from {address}")
+                print(f"[Server] {time.strftime('%H:%M:%S')} New connection from {address}, Total clients: {len(self.clients)}")
                 client_thread = threading.Thread(target=self.handle_client, args=(client_socket,))
                 client_thread.daemon = True
                 client_thread.start()
@@ -80,38 +78,82 @@ class EMGTCPServer(QObject):
             except Exception as e:
                 if self.running:
                     self.connection_status.emit(False, f"Error accepting connection: {e}")
+                    print(f"[Server] {time.strftime('%H:%M:%S')} Error accepting connection: {e}")
 
     def handle_client(self, client_socket):
         try:
             num_windows = self.emg_signal.shape[2]
             window_index = 0
-            while self.running and window_index < num_windows:
-                if self.paused:
-                    time.sleep(0.1)  
+            packet_count = 0
+            while self.running:
+                try:
+                    client_socket.settimeout(0.1)
+                    data = client_socket.recv(1024)
+                    if data:
+                        message = data.decode().strip()
+                        if message.startswith("start:channel:"):
+                            self.current_channel = int(message.split(":")[2])
+                            self.paused = False
+                            window_index = 0
+                            packet_count = 0
+                            print(f"[Server] {time.strftime('%H:%M:%S')} Started sending data for Ch {self.current_channel}, Window: {window_index}/{num_windows}")
+                        elif message.startswith("switch:channel:"):
+                            self.current_channel = int(message.split(":")[2])
+                            window_index = 0
+                            packet_count = 0
+                            print(f"[Server] {time.strftime('%H:%M:%S')} Switched to channel: Ch {self.current_channel}, Window: {window_index}/{num_windows}")
+                        elif message == "pause":
+                            self.paused = True
+                            self.connection_status.emit(False, "Paused")
+                            print(f"[Server] {time.strftime('%H:%M:%S')} Paused, Channel: Ch {self.current_channel}, Window: {window_index}/{num_windows}")
+                        elif message == "resume":
+                            self.paused = False
+                            self.connection_status.emit(True, "Resumed")
+                            print(f"[Server] {time.strftime('%H:%M:%S')} Resumed, Channel: Ch {self.current_channel}, Window: {window_index}/{num_windows}")
+                        else:
+                            print(f"[Server] {time.strftime('%H:%M:%S')} Invalid message: {message}")
+                except socket.timeout:
+                    pass
+
+                if self.paused or window_index >= num_windows:
+                    time.sleep(0.1)
                     continue
-                current_window = self.emg_signal[..., window_index]
-                self.print_data(current_window, window_index)
-                data_bytes = current_window.tobytes()
-                client_socket.sendall(data_bytes)
-                self.data_received.emit(current_window)
+
+                current_window = self.emg_signal[self.current_channel, :, window_index]
+                data_bytes = current_window.astype(np.float32).tobytes(order='C')
+                try:
+                    client_socket.sendall(data_bytes)
+                    self.data_received.emit(current_window[np.newaxis, :])
+                    packet_count += 1
+                    if packet_count % 100 == 0:
+                        min_val, max_val = np.min(current_window), np.max(current_window)
+                        print(f"[Server] {time.strftime('%H:%M:%S')} Sent packet {packet_count}, Window {window_index}/{num_windows}, Channel: Ch {self.current_channel}, Amplitude: [{min_val:.2f}, {max_val:.2f}], Bytes: {len(data_bytes)}")
+                except Exception as e:
+                    print(f"[Server] {time.strftime('%H:%M:%S')} Send error: {e}")
+                    break
+
                 sleep_time = self.SAMPLES_PER_PACKET / self.sampling_rate
                 time.sleep(sleep_time)
                 window_index += 1
+
                 if window_index >= num_windows:
                     window_index = 0
-                    self.connection_status.emit(True, "Restarting data transmission")
+                    print(f"[Server] {time.strftime('%H:%M:%S')} Restarted data transmission, Channel: Ch {self.current_channel}, Window: {window_index}/{num_windows}")
         except Exception as e:
             self.connection_status.emit(False, f"Client error: {e}")
+            print(f"[Server] {time.strftime('%H:%M:%S')} Client error: {e}")
         finally:
             with self.client_lock:
                 if client_socket in self.clients:
                     self.clients.remove(client_socket)
             client_socket.close()
             self.connection_status.emit(False, "Client disconnected")
+            print(f"[Server] {time.strftime('%H:%M:%S')} Client disconnected, Total clients: {len(self.clients)}")
 
     def toggle_pause(self):
         self.paused = not self.paused
         self.connection_status.emit(not self.paused, "Paused" if self.paused else "Resumed")
+        print(f"[Server] {time.strftime('%H:%M:%S')} State changed: {'Paused' if self.paused else 'Resumed'}, Channel: Ch {self.current_channel}")
 
     def stop(self):
         self.running = False
@@ -122,15 +164,14 @@ class EMGTCPServer(QObject):
                 client.close()
             self.clients.clear()
         self.connection_status.emit(False, "Server stopped")
+        print(f"[Server] {time.strftime('%H:%M:%S')} Stopped, Channel: Ch {self.current_channel}")
 
-    
 if __name__ == "__main__":
     server = EMGTCPServer()
     try:
         server.start()
-        # Keep the main thread alive
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\nShutting down server...")
-        server.stop() 
+        print(f"\n[Server] {time.strftime('%H:%M:%S')} Shutting down...")
+        server.stop()
