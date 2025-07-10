@@ -20,8 +20,8 @@ class MainWindow(QMainWindow):
         # 绘图区域
         self.plot_panel = PlotPanel(max_points=1000, sampling_rate=2000, parent=self)
         main_layout.addWidget(self.plot_panel, stretch=1)
-
-        # 控制区域
+        main_layout.addSpacing(20)
+        # 控制区域  
         controls_layout = QHBoxLayout()
         main_layout.addLayout(controls_layout)
 
@@ -39,11 +39,11 @@ class MainWindow(QMainWindow):
         self.toggle_button.setEnabled(False)
         controls_layout.addWidget(self.plot_button)
         controls_layout.addWidget(self.toggle_button)
-
+        
         # 状态标签
         self.status_label = StatusLabel(parent=self)
         main_layout.addWidget(self.status_label)
-
+        main_layout.addSpacing(20) 
         # 信号连接
         self.plot_button.clicked.connect(self.start_plotting)
         self.toggle_button.clicked.connect(self.toggle_pause)
