@@ -26,7 +26,8 @@ class DataProcessor(QObject):
             return
         if not self.paused:
             min_val, max_val = np.min(data), np.max(data)
-            print(f"[DataProcessor] {time.strftime('%H:%M:%S')} Received data for Ch {self.current_channel}, Shape: {data.shape}, Amplitude: [{min_val:.2f}, {max_val:.2f}]")
+            if self.packet_count % 50 == 0:
+             print(f"[DataProcessor] {time.strftime('%H:%M:%S')} Received data for Ch {self.current_channel}, Shape: {data.shape}, Amplitude: [{min_val:.2f}, {max_val:.2f}]")
             self.buffer.append(data.copy())
             self.full_data.append(data.copy())
             self.sample_count += 18

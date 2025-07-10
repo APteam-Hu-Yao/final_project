@@ -15,7 +15,7 @@ class PlotPanel(QWidget):
         self.current_channel = 0
         self.update_count = 0
         self.sample_count = 0
-
+        self.packet_count=0
         # 初始化 VisPy 画布
         self.canvas = SceneCanvas(keys=None, bgcolor='white', parent=self)
         self.view = self.canvas.central_widget.add_view()
@@ -63,6 +63,7 @@ class PlotPanel(QWidget):
             self.tick_labels[i].pos = [tick_x, y_base - label_offset]
 
     def update_data(self, new_samples):
+        
         try:
             if not isinstance(new_samples, np.ndarray):
                 new_samples = np.zeros(18, dtype=np.float32)
@@ -72,7 +73,9 @@ class PlotPanel(QWidget):
                 print(f"[PlotPanel] {time.strftime('%H:%M:%S')} Incorrect data size {new_samples.size}, using zeros, Channel: Ch {self.current_channel}")
 
             n = len(new_samples)
-            print(f"[PlotPanel] {time.strftime('%H:%M:%S')} Received data for Ch {self.current_channel}, Samples: {n}, Amplitude: [{np.min(new_samples):.2f}, {np.max(new_samples):.2f}]")
+            self.packet_count += 1
+            if self.packet_count % 50 == 0:
+             print(f"[PlotPanel] {time.strftime('%H:%M:%S')} Received data {self.packet_count} for Ch {self.current_channel}, Samples: {n}, Amplitude: [{np.min(new_samples):.2f}, {np.max(new_samples):.2f}]")
 
             if n >= self.max_points:
                 self.data[:] = new_samples[-self.max_points:]
@@ -100,9 +103,8 @@ class PlotPanel(QWidget):
 
             self.canvas.update()
             self.canvas.app.process_events()
-            self.update_count += 1
-            if self.update_count % 50 == 0:
-                print(f"[PlotPanel] {time.strftime('%H:%M:%S')} Rendered plot #{self.update_count}, Samples: {n}, Channel: Ch {self.current_channel}, y_range: {y_range}")
+            if self.packet_count % 50 == 0:
+                print(f"[PlotPanel] {time.strftime('%H:%M:%S')} Rendered plot {self.packet_count}, Samples: {n}, Channel: Ch {self.current_channel}, y_range: {y_range}")
         except Exception as e:
             print(f"[PlotPanel] {time.strftime('%H:%M:%S')} update_data error: {e}")
 
@@ -123,6 +125,7 @@ class PlotPanel(QWidget):
             print(f"[PlotPanel] {time.strftime('%H:%M:%S')} set_color error: {e}")
 
     def reset_buffer(self, channel: int):
+        self.packet_count=0
         self.current_channel = channel
         self.data = np.zeros(self.max_points, dtype=np.float32)
         self.ptr = 0

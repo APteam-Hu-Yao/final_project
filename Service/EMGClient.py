@@ -51,7 +51,7 @@ class TCPClient(QObject):
     data_received = pyqtSignal(np.ndarray)
     connection_status = pyqtSignal(bool, str)
 
-    def __init__(self, host='localhost', port=10086, parent=None):
+    def __init__(self, host='localhost', port=12345, parent=None):
         super().__init__(parent)
         self.host = host
         self.port = port

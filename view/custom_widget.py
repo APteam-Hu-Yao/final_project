@@ -9,6 +9,7 @@ class StatusLabel(QLabel):
         print(f"[StatusLabel] {time.strftime('%H:%M:%S')} Initialized")
 
     def set_status(self, message: str):
+        
         self.setText(message)
         print(f"[StatusLabel] {time.strftime('%H:%M:%S')} Status updated: {message}")
 
