@@ -8,7 +8,7 @@ import time
 class PlotPanel(QWidget):
     def __init__(self, max_points=1000, sampling_rate=2000, parent=None):
         super().__init__(parent)
-        self.max_points = max_points  # 1000 样本，0.5 秒
+        self.max_points = max_points  # 动态时间跨度，单位：样本数
         self.sampling_rate = sampling_rate  # 2000 Hz
         self.time_step = 1.0 / self.sampling_rate  # 0.0005 秒
         self.current_channel = 0
@@ -29,7 +29,8 @@ class PlotPanel(QWidget):
         self.axis_line = Line(parent=self.view.scene, color='black')
         self.tick_lines = []
         self.tick_labels = []
-        self.tick_positions = np.arange(0, 0.51, 0.1)  # 0.0, 0.1, ..., 0.5 秒
+        window_duration = self.max_points * self.time_step
+        self.tick_positions = np.arange(0, window_duration + 0.1, 0.1)  # 动态刻度间隔
         for _ in self.tick_positions:
             self.tick_lines.append(Line(parent=self.view.scene, color='black'))
             self.tick_labels.append(Text(parent=self.view.scene, color='black', font_size=8))
@@ -70,11 +71,15 @@ class PlotPanel(QWidget):
         x_axis_y = 0  # X 轴固定在 y=0
         self.axis_line.set_data(np.array([[x_min, x_axis_y], [x_max, x_axis_y]]))
         tick_height = 0.025 * (y_max - y_min)  # 刻度长度
-        label_offset = 300 if self.current_channel == 0 else 30  # 增加偏移量以将标签放低
+        label_offset = 300 if self.current_channel == 0 else 30  # 标签偏移量
+        window_duration = self.max_points * self.time_step
+        self.tick_positions = np.arange(0, window_duration + 0.1, 0.1)  # 动态刻度
         for i, tick_time in enumerate(self.tick_positions):
+            if i >= len(self.tick_lines):  # 动态扩展刻度线和标签
+                self.tick_lines.append(Line(parent=self.view.scene, color='black'))
+                self.tick_labels.append(Text(parent=self.view.scene, color='black', font_size=8))
             tick_x = x_min + tick_time
             self.tick_lines[i].set_data(np.array([[tick_x, x_axis_y], [tick_x, x_axis_y + tick_height]]))
-            # 跳过 0.0s 的标签
             self.tick_labels[i].text = '' if tick_time == 0 else f'{tick_time:.1f}s'
             self.tick_labels[i].pos = [tick_x, x_axis_y - label_offset]
 
@@ -120,6 +125,8 @@ class PlotPanel(QWidget):
 
             # 设置固定 Y 轴范围
             y_range = (-30000, 30000) if self.current_channel == 0 else (-2000, 2000)
+            current_time = self.ptr * self.time_step
+            self.times = np.linspace(current_time - self.max_points * self.time_step, current_time, self.max_points)
             self.view.camera.set_range(x=(self.times[0], self.times[-1]), y=y_range)
 
             # 更新 Y 轴数值标签
@@ -127,7 +134,6 @@ class PlotPanel(QWidget):
             self.y_min_label.text = f'Min: {min_val:.2f}'
             self.y_max_label.text = f'Max: {max_val:.2f}'
 
-            self.times = np.linspace(self.ptr * self.time_step - self.max_points * self.time_step, self.ptr * self.time_step, self.max_points)
             vertices = np.vstack((self.times, self.data)).T
             self.curve.set_data(vertices)
 
