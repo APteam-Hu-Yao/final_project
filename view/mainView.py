@@ -1,17 +1,13 @@
-from PyQt5.QtWidgets import (QMainWindow,
-                             QWidget,
-                             QVBoxLayout,
-                             QSizePolicy,
-                             QSplitter,
-                             )
-from PyQt5.QtGui import QIcon, QPalette, QColor
-from PyQt5.QtCore import Qt, QEvent
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QSizePolicy, QSplitter
+from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt
 from view.plotting_widget import PlotPanel, PlotBar
 from view.channels_widget import ChannelList
 from view.custom_widget import CustomPanel
-from view.status_printer import StatusLabel
+from view.offlineView import OfflineView
+
 import time
-from ViewModel.RealTimeViewModel import SignalViewModel
+
 
 
 #create the window class that we need
@@ -22,11 +18,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("live EMG plotting")
         self.resize(1450, 900)
         self.setWindowIcon(QIcon("others/icon.png"))
-        self.setStyleSheet("background-color: #f0f3f9;")
-
-
-        # self.menu = QMenuBar()
-
+        self.setStyleSheet('background-color: #f0f3f9;font-family: "Segoe UI"')
+        self.offline_window = None
 
         #1.create an instance of 32 channels choose mechanism panel
         self.channel_container = ChannelList()
@@ -40,7 +33,7 @@ class MainWindow(QMainWindow):
         self.plot_container.layout.addWidget(self.plot_panel,stretch=5)
         self.plot_container.layout.addWidget(self.plot_bar,stretch=0)
         self.plot_container.setSizePolicy(QSizePolicy.MinimumExpanding,
-                                          QSizePolicy.MinimumExpanding)#guarantees the plotting panel has a minimum size
+                                          QSizePolicy.MinimumExpanding) #guarantees the plotting panel has a minimum size
         self.plot_container.setLayout(self.plot_container.layout)
 
 
@@ -74,9 +67,10 @@ class MainWindow(QMainWindow):
         main_widget.setLayout(main_layout)
         self.setCentralWidget(main_widget)
 
-        # 信号连接
+        # make the signal and slot connect
         self.plot_bar.start_button.clicked.connect(self.start_plotting)
         self.plot_bar.stop_resume_button.clicked.connect(self.toggle_pause)
+        self.plot_bar.offline_button.clicked.connect(self.offline_show)
         self.channel_container.channel_changed.connect(self.change_channel)
         self.custom_container.filter_changed.connect(self.view_model.set_filter)
         self.custom_container.color_changed.connect(self.view_model.set_color)
@@ -84,25 +78,35 @@ class MainWindow(QMainWindow):
         self.view_model.connection_status_updated.connect(self.plot_bar.status_container.set_connection)
         self.view_model.color_updated.connect(self.plot_panel.set_color)
 
+    #define the slot
     def start_plotting(self):
         channel = self.channel_container.get_current_channel()
         self.view_model.set_channel(channel)
         self.view_model.start_plotting()
         self.plot_bar.start_button.setEnabled(False)
         self.plot_bar.stop_resume_button.setEnabled(True)
-        self.plot_bar.stop_resume_button.setText("STOP")
+        self.plot_bar.stop_resume_button.setText("Stop")
         print(f"[MainWindow] {time.strftime('%H:%M:%S')} Start button clicked, Channel: Ch {channel}")
 
     def toggle_pause(self):
         self.view_model.toggle_pause()
         if self.view_model.is_plotting:
-            self.plot_bar.stop_resume_button.setText("STOP")
+            self.plot_bar.stop_resume_button.setText("Stop")
             self.plot_bar.start_button.setEnabled(False)
         else:
-            self.plot_bar.stop_resume_button.setText("RESUME")
+            self.plot_bar.stop_resume_button.setText("Resume")
             self.plot_bar.start_button.setEnabled(True)
         print(
             f"[MainWindow] {time.strftime('%H:%M:%S')} Toggle button clicked, State: {'Running' if self.view_model.is_plotting else 'Paused'}")
+
+    def offline_show(self):
+        if self.offline_window is None or not self.offline_window.isVisible():
+            self.offline_window = OfflineView()
+            self.offline_window.show()
+        else:
+            self.offline_window.raise_()
+            self.offline_window.activateWindow()
+
 
     def change_channel(self, channel: int):
         self.view_model.set_channel(channel)

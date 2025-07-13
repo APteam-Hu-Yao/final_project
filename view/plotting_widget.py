@@ -1,16 +1,9 @@
-import numpy as np
-from vispy.scene import SceneCanvas, Line, Text
 from vispy.scene.cameras import PanZoomCamera
-from PyQt5.QtWidgets import QWidget, QVBoxLayout
-from PyQt5.QtCore import Qt
-import time
 import numpy as np
 from vispy.scene import SceneCanvas
 from vispy.scene.visuals import Line, Text
-from vispy.color import Color
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QHBoxLayout, QSizePolicy
 from view.status_printer import StatusLabel
-
 import time
 
 
@@ -66,35 +59,44 @@ class PlotPanel(QWidget):
         self.canvas.update()
         print(f"[PlotPanel] {time.strftime('%H:%M:%S')} Initialized canvas, max_points: {max_points}, sampling_rate: {self.sampling_rate} Hz, y_range: {y_range}")
 
-        # Layout with bottom margin
+        # place it
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 50)
         layout.addWidget(self.canvas.native)
         self.setMinimumHeight(400)
 
     def update_axis(self):
-        current_time = self.sample_count * self.time_step
-        x_min = current_time - self.max_points * self.time_step
-        x_max = current_time
+        window_duration = self.max_points * self.time_step
+        current_time  = self.sample_count * self.time_step
+
+        if current_time < window_duration:
+            x_min, x_max = 0.0, window_duration
+        else:
+            x_min, x_max = current_time - window_duration, current_time
+
+
         y_min, y_max = (-30000, 30000) if self.current_channel == 0 else (-2000, 2000)
 
-        # Update X-axis at y=0
-        x_axis_y = 0
-        self.axis_line.set_data(np.array([[x_min, x_axis_y], [x_max, x_axis_y]]))
-        tick_height = 0.025 * (y_max - y_min)
+
+        x_axis_y = y_min
+        self.axis_line.set_data(np.array([[x_min, x_axis_y],
+                                          [x_max, x_axis_y]]))
+
+        tick_height  = 0.025 * (y_max - y_min)
         label_offset = 300 if self.current_channel == 0 else 30
-        window_duration = self.max_points * self.time_step
-        self.tick_positions = np.arange(0, window_duration + 0.1, 0.1)
+
+        self.tick_positions = np.arange(0, window_duration + 1e-8, 0.1)
         for i, tick_time in enumerate(self.tick_positions):
             if i >= len(self.tick_lines):
                 self.tick_lines.append(Line(parent=self.view.scene, color='white'))
-                self.tick_labels.append(Text(parent=self.view.scene, color='white', font_size=8))
+                self.tick_labels.append(Text(parent=self.view.scene, color='white',
+                                             font_size=8))
             tick_x = x_min + tick_time
-            self.tick_lines[i].set_data(np.array([[tick_x, x_axis_y], [tick_x, x_axis_y + tick_height]]))
+            self.tick_lines[i].set_data(np.array([[tick_x, x_axis_y],
+                                                  [tick_x, x_axis_y + tick_height]]))
             self.tick_labels[i].text = '' if tick_time == 0 else f'{tick_time:.1f}s'
-            self.tick_labels[i].pos = [tick_x, x_axis_y - label_offset]
+            self.tick_labels[i].pos  = [tick_x, x_axis_y - label_offset]
 
-        # Update Y-axis
         self.y_axis_line.set_data(np.array([[x_min, y_min], [x_min, y_max]]))
         y_tick_height = 0.02 * (x_max - x_min)
         y_label_offset = 0.03 * (x_max - x_min)
@@ -107,7 +109,6 @@ class PlotPanel(QWidget):
             self.y_tick_labels[i].text = f'{y_val:.0f}'
             self.y_tick_labels[i].pos = [x_min - y_label_offset, y_val]
 
-        # Update Y-axis min/max labels
         self.y_min_label.pos = [x_max - 0.1 * (x_max - x_min), y_max - 0.1 * (y_max - y_min)]
         self.y_max_label.pos = [x_max - 0.1 * (x_max - x_min), y_max - 0.2 * (y_max - y_min)]
 
@@ -139,17 +140,29 @@ class PlotPanel(QWidget):
                 self.ptr = (self.ptr + n) % self.max_points
 
             current_time = self.sample_count * self.time_step
-            self.times = np.linspace(current_time - self.max_points * self.time_step, current_time, self.max_points)
+            window = self.max_points * self.time_step
+
+            if current_time < window:
+                start, end = 0.0, window
+            else:
+                start, end = current_time - window, current_time
+
+            self.times = np.linspace(start, end, self.max_points)
             vertices = np.vstack((self.times, self.data)).T
             self.curve.set_data(vertices)
 
-            # Update Y-axis min/max labels
-            min_val, max_val = np.min(self.data), np.max(self.data)
+            min_val, max_val = self.data.min(), self.data.max()
+
             self.y_min_label.text = f'Min: {min_val:.2f}'
             self.y_max_label.text = f'Max: {max_val:.2f}'
 
+            offset_x = start - 0.05 * (end - start)
+            self.y_min_label.pos = (offset_x, min_val)
+            self.y_max_label.pos = (offset_x, max_val)
+
             y_range = (-30000, 30000) if self.current_channel == 0 else (-2000, 2000)
-            self.view.camera.set_range(x=(self.times[0], self.times[-1]), y=y_range)
+            self.view.camera.set_range(x=(start, end), y=y_range)
+
             self.update_axis()
 
             self.canvas.update()
@@ -162,7 +175,7 @@ class PlotPanel(QWidget):
     def set_color(self, color: str):
         color_map = {
             "White": "white",
-            "Pink": "pink",
+            "Pink": "#FFC0CB",
             "Neon Blue": "#00FFFF",
             "Neon Pink": "#FF69B4",
             "lime": "lime"
@@ -199,33 +212,31 @@ class PlotBar(QWidget):
         self.start_button = QPushButton('Start') #create the start button
         self.start_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.start_button.setMinimumSize(0,100)
-        self.start_button.setStyleSheet('background-color: #496989; color: white; font-family: "Segoe UI"; font-size:35px')
+        self.start_button.setStyleSheet('background-color: #496989; color: white; font-size:35px')
         self.stop_resume_button = QPushButton('Stop') #create the stop_resume button
         self.stop_resume_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.stop_resume_button.setMinimumSize(0,100)
-        self.stop_resume_button.setStyleSheet('background-color: #496989; color: white; font-family: "Segoe UI"; font-size:35px')
+        self.stop_resume_button.setStyleSheet('background-color: #496989; color: white; font-size:35px')
+        self.offline_button = QPushButton("Offline") #create the offline view button
+        self.offline_button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.offline_button.setMinimumSize(0, 75)
+        self.offline_button.setStyleSheet('background-color: #9AA6B2; color: black; font-size:35px')
+
+
         self.status_container = StatusLabel() #create the status label
+
         #place them horizontal
         layout = QHBoxLayout()
         layout.addWidget(self.status_container)
         layout.addStretch()
         layout.addWidget(self.start_button)
+        layout.addSpacing(20)
         layout.addWidget(self.stop_resume_button)
+        layout.addSpacing(300)
+        layout.addWidget(self.offline_button)
+
+        # adjust the space
         layout.addStretch()
-        layout.setSpacing(20)
         layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(layout)
         self.setMinimumSize(750,125)
-        # self.start_button.clicked.connect(self.view_model.start_plotting)
-        # #toggle the stop/resume
-        self.stop_resume_button.clicked.connect(self.toggle_button)
-        # self.stop_resume_button.clicked.connect(self.view_model.toggle_pause)
-
-    def toggle_button(self):
-        # if it's stop, turn resume;else turn stop
-        if self.stop_resume_button.text() == "Stop":
-            self.stop_resume_button.setText("Resume")
-            # 在这里可以插入暂停后的处理逻辑
-        else:
-            self.stop_resume_button.setText("Stop")
-            # 在这里可以插入恢复后的处理逻辑
